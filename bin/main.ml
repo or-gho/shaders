@@ -12,15 +12,15 @@ open Tgl3
 (* ---------- The shaders, as strings (the part we want to replace) ---------- *)
 
 let vertex_src =
-  {|#version 330 core
-layout(location = 0) in vec2 position;
-layout(location = 1) in vec3 color;
-out vec3 v_color;
-void main() {
-  v_color = color;
-  gl_Position = vec4(position, 0.0, 1.0);
-}
-|}
+  {| #version 330 core
+    layout(location = 0) in vec3 position;
+    layout(location = 1) in vec3 color;
+    uniform mat4 mvp;
+    out vec3 v_color;
+    void main() {
+      v_color = color;
+      gl_Position = mvp * vec4(position, 1.0);
+    } |}
 ;;
 
 let fragment_src =
@@ -87,34 +87,140 @@ let link_program vs_src fs_src =
     Error (`Msg ("program link error:\n" ^ Gl.string_of_bigarray log)))
 ;;
 
-(* ---------- Geometry: x, y, r, g, b per vertex ---------- *)
+(* Choose which shape to draw. *)
+type shape =
+  | Triangle
+  | Rectangle
+  | Cube
+
+let selected_shape = Cube
+
+type vertex =
+  { x : float
+  ; y : float
+  ; z : float
+  ; r : float
+  ; g : float
+  ; b : float
+  }
+
+let triangle_vertices =
+  [ { x = 0.0; y = 0.6; z = 0.0; r = 1.0; g = 0.0; b = 0.0 }
+  ; { x = -0.6; y = -0.5; z = 0.0; r = 0.0; g = 1.0; b = 0.0 }
+  ; { x = 0.6; y = -0.5; z = 0.0; r = 0.0; g = 0.0; b = 1.0 }
+  ]
+;;
+
+let rectangle_vertices =
+  [ { x = -0.6; y = 0.5; z = 0.0; r = 1.0; g = 0.0; b = 0.0 }
+  ; { x = 0.6; y = 0.5; z = 0.0; r = 0.0; g = 1.0; b = 0.0 }
+  ; { x = 0.6; y = -0.5; z = 0.0; r = 0.0; g = 0.0; b = 1.0 }
+  ; { x = -0.6; y = 0.5; z = 0.0; r = 1.0; g = 0.0; b = 0.0 }
+  ; { x = 0.6; y = -0.5; z = 0.0; r = 0.0; g = 0.0; b = 1.0 }
+  ; { x = -0.6; y = -0.5; z = 0.0; r = 1.0; g = 1.0; b = 0.0 }
+  ]
+;;
+
+let cube_corners =
+  [| -0.5, -0.5, 0.5
+   ; 0.5, -0.5, 0.5
+   ; 0.5, 0.5, 0.5
+   ; -0.5, 0.5, 0.5
+   ; -0.5, -0.5, -0.5
+   ; 0.5, -0.5, -0.5
+   ; 0.5, 0.5, -0.5
+   ; -0.5, 0.5, -0.5
+  |]
+;;
+
+let cube_faces =
+  [ (0, 1, 2, 3), (1.0, 0.2, 0.2) (* front  red     *)
+  ; (5, 4, 7, 6), (0.2, 1.0, 0.2) (* back   green   *)
+  ; (1, 5, 6, 2), (0.2, 0.2, 1.0) (* right  blue    *)
+  ; (4, 0, 3, 7), (1.0, 1.0, 0.2) (* left   yellow  *)
+  ; (3, 2, 6, 7), (1.0, 0.2, 1.0) (* top    magenta *)
+  ; (4, 5, 1, 0), (0.2, 1.0, 1.0)
+  ]
+;;
+
+(* bottom cyan    *)
+
+(* Each quad becomes two triangles: (a,b,c) and (a,c,d). *)
+let cube_vertices =
+  cube_faces
+  |> List.concat_map (fun ((i0, i1, i2, i3), (r, g, b)) ->
+    let v i =
+      let x, y, z = cube_corners.(i) in
+      { x; y; z; r; g; b }
+    in
+    [ v i0; v i1; v i2; v i0; v i2; v i3 ])
+;;
+
+let selected_vertices =
+  match selected_shape with
+  | Triangle -> triangle_vertices
+  | Rectangle -> rectangle_vertices
+  | Cube -> cube_vertices
+;;
+
+let vertex_count = List.length selected_vertices
 
 let vertices =
-  Bigarray.(
-    Array1.of_array
-      float32
-      c_layout
-      [| (* x      y      r    g    b *)
-         0.0
-       ; 0.6
-       ; 1.0
-       ; 0.0
-       ; 0.0
-       ; -0.6
-       ; -0.5
-       ; 0.0
-       ; 1.0
-       ; 0.0
-       ; 0.6
-       ; -0.5
-       ; 0.0
-       ; 0.0
-       ; 1.0
-      |])
+  selected_vertices
+  |> List.concat_map (fun { x; y; z; r; g; b } -> [ x; y; z; r; g; b ])
+  |> Array.of_list
+  |> Bigarray.(Array1.of_array float32 c_layout)
 ;;
 
 let float_size = 4
-let stride = 5 * float_size
+let floats_per_vertex = 6
+let stride = floats_per_vertex * float_size
+
+let mat_mul a b =
+  Array.init 16 (fun i ->
+    let col = i / 4
+    and row = i mod 4 in
+    let s = ref 0.0 in
+    for k = 0 to 3 do
+      s := !s +. (a.((k * 4) + row) *. b.((col * 4) + k))
+    done;
+    !s)
+;;
+
+let rotate_y t =
+  let c = cos t
+  and s = sin t in
+  [| c; 0.; -.s; 0.; 0.; 1.; 0.; 0.; s; 0.; c; 0.; 0.; 0.; 0.; 1. |]
+;;
+
+let rotate_x t =
+  let c = cos t
+  and s = sin t in
+  [| 1.; 0.; 0.; 0.; 0.; c; s; 0.; 0.; -.s; c; 0.; 0.; 0.; 0.; 1. |]
+;;
+
+let translate_z tz = [| 1.; 0.; 0.; 0.; 0.; 1.; 0.; 0.; 0.; 0.; 1.; 0.; 0.; 0.; tz; 1. |]
+
+let perspective fovy aspect near far =
+  let f = 1.0 /. tan (fovy /. 2.0) in
+  [| f /. aspect
+   ; 0.
+   ; 0.
+   ; 0.
+   ; 0.
+   ; f
+   ; 0.
+   ; 0.
+   ; 0.
+   ; 0.
+   ; (far +. near) /. (near -. far)
+   ; -1.
+   ; 0.
+   ; 0.
+   ; 2.0 *. far *. near /. (near -. far)
+   ; 0.
+  |]
+;;
 
 (* ---------- Main ---------- *)
 
@@ -124,6 +230,7 @@ let () =
   ok (Sdl.gl_set_attribute Sdl.Gl.context_minor_version 3);
   ok (Sdl.gl_set_attribute Sdl.Gl.context_profile_mask Sdl.Gl.context_profile_core);
   ok (Sdl.gl_set_attribute Sdl.Gl.doublebuffer 1);
+  ok (Sdl.gl_set_attribute Sdl.Gl.depth_size 24);
   let win =
     ok (Sdl.create_window ~w:800 ~h:600 "OCaml triangle" Sdl.Window.(opengl + shown))
   in
@@ -131,7 +238,9 @@ let () =
   ok (Sdl.gl_make_current win ctx);
   (* ok (Sdl.gl_set_swap_interval 1); *)
   ignore (Sdl.gl_set_swap_interval 1);
+  Gl.enable Gl.depth_test;
   let program = ok (link_program vertex_src fragment_src) in
+  let mvp_loc = Gl.get_uniform_location program "mvp" in
   (* Vertex array + buffer describing the triangle *)
   let vao = gen_vertex_array () in
   let vbo = gen_buffer () in
@@ -143,10 +252,10 @@ let () =
     (Some vertices)
     Gl.static_draw;
   (* location 0: position (vec2) *)
-  Gl.vertex_attrib_pointer 0 2 Gl.float false stride (`Offset 0);
+  Gl.vertex_attrib_pointer 0 3 Gl.float false stride (`Offset 0);
   Gl.enable_vertex_attrib_array 0;
   (* location 1: color (vec3) *)
-  Gl.vertex_attrib_pointer 1 3 Gl.float false stride (`Offset (2 * float_size));
+  Gl.vertex_attrib_pointer 1 3 Gl.float false stride (`Offset (3 * float_size));
   Gl.enable_vertex_attrib_array 1;
   let event = Sdl.Event.create () in
   let running = ref true in
@@ -158,11 +267,19 @@ let () =
         running := false
       | _ -> ()
     done;
+    (* NEW: build the transform matrix for this frame *)
+    let t = Int32.to_float (Sdl.get_ticks ()) /. 1000.0 in
+    let model = mat_mul (rotate_y t) (rotate_x (t *. 0.5)) in
+    let view = translate_z (-3.0) in
+    let proj = perspective 0.8 (800.0 /. 600.0) 0.1 100.0 in
+    let mvp = mat_mul proj (mat_mul view model) in
+    let mvp_buf = Bigarray.(Array1.of_array float32 c_layout mvp) in
     Gl.clear_color 0.08 0.08 0.1 1.0;
-    Gl.clear Gl.color_buffer_bit;
+    Gl.clear (Gl.color_buffer_bit lor Gl.depth_buffer_bit);
     Gl.use_program program;
+    Gl.uniform_matrix4fv mvp_loc 1 false mvp_buf;
     Gl.bind_vertex_array vao;
-    Gl.draw_arrays Gl.triangles 0 3;
+    Gl.draw_arrays Gl.triangles 0 vertex_count;
     Sdl.gl_swap_window win
   done;
   Sdl.gl_delete_context ctx;
