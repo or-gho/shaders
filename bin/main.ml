@@ -87,30 +87,51 @@ let link_program vs_src fs_src =
     Error (`Msg ("program link error:\n" ^ Gl.string_of_bigarray log)))
 ;;
 
-(* ---------- Geometry: x, y, r, g, b per vertex ---------- *)
+(* Choose which shape to draw. *)
+type shape =
+  | Triangle
+  | Rectangle
+
+let selected_shape = Rectangle
+
+type vertex =
+  { x : float
+  ; y : float
+  ; r : float
+  ; g : float
+  ; b : float
+  }
+
+let triangle_vertices =
+  [ { x = 0.0; y = 0.6; r = 1.0; g = 0.0; b = 0.0 }
+  ; { x = -0.6; y = -0.5; r = 0.0; g = 1.0; b = 0.0 }
+  ; { x = 0.6; y = -0.5; r = 0.0; g = 0.0; b = 1.0 }
+  ]
+;;
+
+let rectangle_vertices =
+  [ { x = -0.6; y = 0.5; r = 1.0; g = 0.0; b = 0.0 }
+  ; { x = 0.6; y = 0.5; r = 0.0; g = 1.0; b = 0.0 }
+  ; { x = 0.6; y = -0.5; r = 0.0; g = 0.0; b = 1.0 }
+  ; { x = -0.6; y = 0.5; r = 1.0; g = 0.0; b = 0.0 }
+  ; { x = 0.6; y = -0.5; r = 0.0; g = 0.0; b = 1.0 }
+  ; { x = -0.6; y = -0.5; r = 1.0; g = 1.0; b = 0.0 }
+  ]
+;;
+
+let selected_vertices =
+  match selected_shape with
+  | Triangle -> triangle_vertices
+  | Rectangle -> rectangle_vertices
+;;
+
+let vertex_count = List.length selected_vertices
 
 let vertices =
-  Bigarray.(
-    Array1.of_array
-      float32
-      c_layout
-      [| (* x      y      r    g    b *)
-         0.0
-       ; 0.6
-       ; 1.0
-       ; 0.0
-       ; 0.0
-       ; -0.6
-       ; -0.5
-       ; 0.0
-       ; 1.0
-       ; 0.0
-       ; 0.6
-       ; -0.5
-       ; 0.0
-       ; 0.0
-       ; 1.0
-      |])
+  selected_vertices
+  |> List.concat_map (fun { x; y; r; g; b } -> [ x; y; r; g; b ])
+  |> Array.of_list
+  |> Bigarray.(Array1.of_array float32 c_layout)
 ;;
 
 let float_size = 4
@@ -162,7 +183,7 @@ let () =
     Gl.clear Gl.color_buffer_bit;
     Gl.use_program program;
     Gl.bind_vertex_array vao;
-    Gl.draw_arrays Gl.triangles 0 3;
+    Gl.draw_arrays Gl.triangles 0 vertex_count;
     Sdl.gl_swap_window win
   done;
   Sdl.gl_delete_context ctx;
