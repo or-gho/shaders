@@ -9,9 +9,49 @@
 open Tsdl
 open Tgl3
 
+(* Bring the eDSL into scope. *)
+open Shaders_of_ocaml
+
+let vertex_shader =
+  let open Dsl in
+  let open Shader in
+  let open Types in
+  let position = attribute Vec3 "position" in
+  let color = attribute Vec3 "color" in
+  let mvp = uniform Mat4 "mvp" in
+  let v_color = Types.Vec3, "v_color" in
+  { vs_attributes = [ Vec3, "position"; Vec3, "color" ]
+  ; vs_uniforms = [ Mat4, "mvp" ]
+  ; vs_varyings = [ v_color ]
+  ; vs_body =
+      [ assign v_color color
+      ; assign (Vec4, "gl_Position") (mat4_mul_vec4 mvp (vec4_of_vec3 position (f 1.0)))
+      ]
+  }
+;;
+
+let fragment_shader =
+  let open Dsl in
+  let open Shader in
+  let open Types in
+  let v_color = Vec3, "v_color" in
+  let v_color_in = attribute Vec3 "v_color" in
+  { fs_uniforms = []
+  ; fs_varyings = [ v_color ]
+  ; fs_output = Vec4, "frag_color"
+  ; fs_body = [ assign (Vec4, "frag_color") (vec4_of_vec3 v_color_in (f 1.0)) ]
+  }
+;;
+
+(* Transpile to GLSL strings. The [compile_pair] call enforces that the
+   vertex shader's varyings match the fragment shader's varyings. *)
+let vertex_src, fragment_src =
+  Shaders_of_ocaml_glsl.Transpile.compile_pair vertex_shader fragment_shader
+;;
+
 (* ---------- The shaders, as strings (the part we want to replace) ---------- *)
 
-let vertex_src =
+(* let vertex_src =
   {| #version 330 core
     layout(location = 0) in vec3 position;
     layout(location = 1) in vec3 color;
@@ -31,7 +71,7 @@ void main() {
   frag_color = vec4(v_color, 1.0);
 }
 |}
-;;
+;; *)
 
 (* ---------- Small helpers ---------- *)
 

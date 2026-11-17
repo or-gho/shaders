@@ -1,5 +1,5 @@
 (executable
  (public_name shaders)
  (name main)
- (libraries tsdl tgls.tgl3 shaders)
+ (libraries tsdl tgls.tgl3 shaders_of_ocaml shaders_of_ocaml_glsl )
  (link_flags (-cclib -Wl,--no-as-needed -cclib -lGL)))
