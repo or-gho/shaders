@@ -1,0 +1,17 @@
+# Dune build output
+_build/
+
+# OCaml compiled artifacts
+*.cmi
+*.cmo
+*.cmx
+*.cmxa
+*.cma
+*.cmxs
+*.cmt
+*.cmti
+*.o
+*.a
+
+# Editor / local tooling
+.merlin

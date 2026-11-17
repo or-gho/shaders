@@ -1,0 +1,5 @@
+(executable
+ (public_name shaders)
+ (name main)
+ (libraries tsdl tgls.tgl3 shaders)
+ (link_flags (-cclib -Wl,--no-as-needed -cclib -lGL)))
