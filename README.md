@@ -166,14 +166,6 @@ The test suite runs `naga` on the generated WGSL when it is installed. Install
 it from https://github.com/gfx-rs/wgpu (the `naga-cli` crate) if you want
 that check. Without it the test still runs and skips validation.
 
-## Nix flake
-
-A flake provides a development shell with OCaml, dune, the opam packages, and
-the system libraries. Enter it with:
-
-```sh
-nix develop
-```
 
 Then build and run as usual.
 
