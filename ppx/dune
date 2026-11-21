@@ -1,0 +1,6 @@
+ (library
+  (name shaders_ppx)
+  (public_name shaders_of_ocaml.ppx)
+  (kind ppx_rewriter)
+  (libraries ppxlib)
+  (preprocess (pps ppxlib.metaquot)))

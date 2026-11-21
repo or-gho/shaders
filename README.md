@@ -1,183 +1,191 @@
-# OCaml triangle (baseline for Shaders_of_ocaml)
+# Shaders of OCaml
 
-A coloured triangle rendered with OpenGL 3.3 core from OCaml. The GLSL shaders
-are plain strings on purpose: this is the "before" picture that a typed
-shader library will later replace.
+A typed eDSL for writing OpenGL and WebGPU shaders in OCaml.
 
-Known to work on WSL2 (Ubuntu) with the fish shell, using the setup below.
+Instead of keeping GLSL or WGSL as strings that only fail at runtime, you
+describe a shader with OCaml values. The OCaml compiler checks the types and
+names, and `Compile.pair` turns the description into GLSL or WGSL source.
 
-## 1. System packages
+You can write shaders in two ways:
 
-These are installed with the OS package manager, not with opam.
+1. **Builder eDSL.** Call functions such as `Vertex.attribute`,
+   `Fragment.output`, and `S.assign`. Everything is an ordinary OCaml value.
+2. **PPX.** Write GLSL-like text inside `[%shader.vertex {| ... |}]` or
+   `[%shader.fragment {| ... |}]`. The PPX parses it at build time, so syntax
+   errors are reported before the program runs.
 
-### Debian / Ubuntu / WSL2 (Ubuntu)
+Both produce the same output. A test in this repository checks that the PPX
+and the builder generate identical GLSL.
+
+## Example
+
+```ocaml
+open Shaders_of_ocaml
+
+let vertex_shader =
+  let vb = Vertex.create () in
+  let vb, position = Vertex.attribute "position" Ty.vec3 vb in
+  let vb, color    = Vertex.attribute "color" Ty.vec3 vb in
+  let vb, mvp      = Vertex.uniform "mvp" Ty.mat4 vb in
+  let vb, v_color  = Vertex.varying "v_color" Ty.vec3 vb in
+  Vertex.body vb (fun gl_position ->
+    [ S.assign v_color (S.read color)
+    ; S.assign gl_position
+        (E.mat4_mul_vec4 (S.read mvp)
+           (E.vec4_of_vec3 (S.read position) (E.float 1.0)))
+    ])
+
+let fragment_shader =
+  let fb = Fragment.create () in
+  let fb, v_color   = Fragment.varying "v_color" Ty.vec3 fb in
+  let fb, frag_color = Fragment.output "frag_color" Ty.vec4 fb in
+  Fragment.body fb
+    [ S.assign frag_color (E.vec4_of_vec3 (S.read v_color) (E.float 1.0)) ]
+
+let glsl =
+  match Compile.pair ~backend:GLSL vertex_shader fragment_shader with
+  | Ok program -> program
+  | Error err -> failwith (string_of_error err)
+
+let vertex_src = glsl.vertex
+let fragment_src = glsl.fragment
+```
+
+The same shaders in PPX form:
+
+```ocaml
+let vertex_shader =
+  [%shader.vertex
+    {| attribute position : vec3;
+       attribute color    : vec3;
+       uniform   mvp      : mat4;
+       varying   v_color  : vec3;
+       void {
+         v_color = color;
+         gl_Position = mvp * vec4(position, 1.0);
+       } |}]
+
+let fragment_shader =
+  [%shader.fragment
+    {| varying v_color    : vec3;
+       output  frag_color : vec4;
+       void {
+         frag_color = vec4(v_color, 1.0);
+       } |}]
+```
+
+To target WebGPU, change only the backend: `Compile.pair ~backend:WGSL ...`.
+
+## What is checked, and when
+
+| Error | Where it is caught |
+|---|---|
+| Wrong type in an expression, unknown OCaml name | OCaml compile time |
+| Syntax error inside `{| ... |}` | build time, by the PPX |
+| Varying names that differ between stages | `Compile.pair`, returns `Interface_mismatch` |
+| Invalid GLSL or WGSL produced by the library | not checked by this library; test with a validator such as `naga` |
+
+Varying names are plain strings, so OCaml cannot compare them across the two
+stages. Bind them to shared values if you want the compiler to catch typos:
+
+```ocaml
+let v_color_name = "v_color"
+```
+
+## Requirements
+
+- OCaml 4.14 or newer (5.x works)
+- opam
+- Nix, only if you use the flake (see below)
+
+### Packages
+
+Install the library and the PPX tooling with opam:
 
 ```sh
-sudo apt update
-sudo apt install \
-  build-essential pkg-config \
-  libsdl2-dev \
-  libgl-dev libgl1-mesa-dri \
-  mesa-utils
+opam install dune ppxlib tsdl tgls
 ```
 
 | Package | Why it is needed |
 |---|---|
-| `build-essential` | C compiler and linker, used when building the OCaml bindings |
-| `pkg-config` | lets the OCaml SDL binding find SDL2 |
-| `libsdl2-dev` | SDL2 headers and library: window and OpenGL context |
-| `libgl-dev` | provides the `libGL.so` symlink needed by the `-lGL` link flag |
-| `libgl1-mesa-dri` | Mesa OpenGL drivers (software and D3D12 on WSL2) |
-| `mesa-utils` | provides `glxinfo`, used to check which OpenGL version you get |
+| `dune` | build system |
+| `ppxlib` | needed to build the `[%shader.vertex]` / `[%shader.fragment]` PPX |
+| `tsdl` | SDL2 bindings, used by the example program to open a window |
+| `tgls` | OpenGL bindings (`Tgl3`), used by the example program |
 
-### macOS
-
-```sh
-brew install sdl2 pkg-config
-```
-
-(On macOS, see the note at the end about the forward-compatible flag, and use
-`-framework OpenGL` instead of `-lGL`; the link flags below are Linux-specific.)
-
-## 2. OCaml / opam packages
-
-You need OCaml 4.14 or newer (5.x is fine), plus opam.
+For the example program you also need the system libraries, as in Debian and
+Ubuntu:
 
 ```sh
-opam install dune tsdl tgls
+sudo apt install build-essential pkg-config libsdl2-dev libgl-dev libgl1-mesa-dri mesa-utils
 ```
 
-| Package | Why it is needed |
-|---|---|
-| `dune` | the build system |
-| `tsdl` | OCaml bindings to SDL2 (window, context, events) |
-| `tgls` | OCaml bindings to OpenGL (`Tgl3` module) |
+On macOS: `brew install sdl2 pkg-config`.
 
-`tgls` also pulls in `ctypes` and `ctypes-foreign` automatically.
-
-Make sure your shell has the opam environment loaded:
+Load the opam environment in your shell:
 
 - bash/zsh: `eval $(opam env)`
 - fish: `eval (opam env)`
 
-## 3. Project layout
+## Building
 
-```
-shaders/
-  dune-project
-  bin/
-    dune
-    main.ml
+```sh
+dune build
+dune test
+dune exec shaders_of_ocaml
 ```
 
-### `dune-project`
-
-```
-(lang dune 3.24)
-
-(package
- (name shaders))
-```
-
-The `package` stanza is needed because `bin/dune` uses `public_name`.
-If your dune is older than 3.0, change the version to match `dune --version`.
-
-### `bin/dune`
+The example executable needs OpenGL linked explicitly. In `bin/dune`:
 
 ```
 (executable
  (name main)
- (public_name shaders)
- (libraries tsdl tgls.tgl3)
+ (public_name shaders_of_ocaml)
+ (libraries shaders_of_ocaml tsdl tgls.tgl3)
  (link_flags (-cclib -Wl,--no-as-needed -cclib -lGL)))
 ```
 
-What each line does:
+Without the `link_flags` line the program fails with
+`undefined symbol: glCreateShader`. On macOS, use `-framework OpenGL` instead
+of `-lGL`.
 
-| Line | Meaning |
-|---|---|
-| `(name main)` | builds `bin/main.ml` into `main.exe` |
-| `(public_name shaders)` | lets you run it as `dune exec shaders` |
-| `(libraries tsdl tgls.tgl3)` | links SDL2 and the OpenGL 3.x bindings |
-| `(link_flags ...)` | links the system OpenGL library into the executable |
+To use the PPX in your own project, add it to the `preprocess` field:
 
-**The `link_flags` line is required.** `tgls` looks up OpenGL functions
-(like `glCreateShader`) inside the running program. Without this line the
-program starts, opens a window, then crashes with
-`undefined symbol: glCreateShader`. `--no-as-needed` stops the Linux linker
-from dropping `libGL` as "unused", and it must come before `-lGL`.
-
-If you do not want `public_name`, remove that line (and the `package`
-stanza) and run `dune exec ./bin/main.exe` instead.
-
-## 4. Two changes needed in `main.ml` on WSL2
-
-WSL2 graphics drivers can refuse vsync, which makes the program exit with
-"That operation is not supported". Make the swap-interval call non-fatal:
-
-```ocaml
-(* before *)
-ok (Sdl.gl_set_swap_interval 1);
-
-(* after *)
-ignore (Sdl.gl_set_swap_interval 1);
+```
+(executable
+ (name main)
+ (libraries shaders_of_ocaml)
+ (preprocess (pps shaders_of_ocaml.ppx)))
 ```
 
-## 5. Build and run
+<!-- Check: confirm the PPX library name in src/ppx/dune -->
+
+## Optional: validating WGSL
+
+The test suite runs `naga` on the generated WGSL when it is installed. Install
+it from https://github.com/gfx-rs/wgpu (the `naga-cli` crate) if you want
+that check. Without it the test still runs and skips validation.
+
+## Nix flake
+
+A flake provides a development shell with OCaml, dune, the opam packages, and
+the system libraries. Enter it with:
 
 ```sh
-cd shaders
-dune build
-dune exec shaders
+nix develop
 ```
 
-Press Esc or close the window to quit.
+Then build and run as usual.
 
-To see the exit code in fish: `dune exec shaders; echo "exit code: $status"`
-(in bash/zsh it is `$?`).
+## Layout
 
-## 6. Troubleshooting
-
-| Symptom | Likely cause and fix |
-|---|---|
-| `dune: library "tsdl" not found` | run `opam install tsdl tgls`, and load the opam env |
-| Package `sdl2` not found during install | install `libsdl2-dev` and `pkg-config` |
-| `cannot find -lGL` at link time | `sudo apt install libgl-dev` |
-| `undefined symbol: glCreateShader` | the `link_flags` line is missing from `bin/dune` |
-| "That operation is not supported" | vsync refused: use `ignore` as in section 4 |
-| Window opens and closes instantly | read the error printed in the terminal; often a GLSL compile error or OpenGL below 3.3 (see below) |
-| No window at all | check `echo $DISPLAY` is not empty (WSLg), run `wsl --update` in PowerShell, then `wsl --shutdown` |
-
-Checking your OpenGL version:
-
-```sh
-glxinfo -B | grep -i version
+```
+dune-project
+src/          the eDSL and the GLSL / WGSL backends
+ppx/          the [%shader.vertex] and [%shader.fragment] PPX
+bin/          example program (OpenGL 3.3 triangle)
+test/         tests (builder vs PPX output, interface check, WGSL validation)
+flake.nix
 ```
 
-"OpenGL core profile version string" must be 3.3 or higher. Useful overrides
-for testing (fish 3.1+ syntax; older fish: prefix with `env`):
-
-```sh
-LIBGL_ALWAYS_SOFTWARE=1 dune exec shaders
-MESA_GL_VERSION_OVERRIDE=3.3 MESA_GLSL_VERSION_OVERRIDE=330 dune exec shaders
-SDL_VIDEODRIVER=x11 dune exec shaders
-```
-
-## 7. Other notes
-
-- **Project location on WSL2:** keeping the project under `/mnt/c/...` works
-  but builds slowly. Moving it into the Linux filesystem (for example
-  `~/shaders`) is faster.
-- **macOS:** Apple only provides a 3.3 core context with the
-  forward-compatible flag. If context creation fails, add
-  `ok (Sdl.gl_set_attribute Sdl.Gl.context_flags Sdl.Gl.context_forward_compatible_flag);`
-  before creating the window.
-- **HiDPI displays:** if the triangle looks small or off-centre, set the
-  viewport from `Sdl.gl_get_drawable_size`.
-
-## 8. The problem this baseline demonstrates
-
-Change `vec4(v_color, 1.0)` in `fragment_src` to `vec4(v_color, 1)`, or
-misspell `v_color`. The OCaml build still succeeds and the error only
-appears at runtime as a GLSL compile log. A typed shader library should
-turn that into an OCaml compile error.
+<!-- Check: adjust the directory names above to match your repository -->

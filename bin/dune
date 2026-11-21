@@ -1,5 +1,6 @@
 (executable
- (public_name shaders)
+ (public_name shaders_of_ocaml)
  (name main)
- (libraries tsdl tgls.tgl3 shaders)
+ (libraries tsdl tgls.tgl3 shaders_of_ocaml )
+ (preprocess (pps shaders_of_ocaml.ppx))
  (link_flags (-cclib -Wl,--no-as-needed -cclib -lGL)))
