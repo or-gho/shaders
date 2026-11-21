@@ -12,24 +12,34 @@ open Tgl3
 (* Bring the eDSL into scope. *)
 open Shaders_of_ocaml
 
-
-(* let vertex_src =
-  {| #version 330 core
-    layout(location = 0) in vec3 position;
-    layout(location = 1) in vec3 color;
-    uniform mat4 mvp;
-    out vec3 v_color;
-    void main() {
-      v_color = color;
-      gl_Position = mvp * vec4(position, 1.0);
-    } |}
-;;
-*)
-
-
-
-(* New typed shader implementation *)
 let vertex_shader =
+  [%shader.vertex
+    {| attribute position : vec3;
+       attribute color    : vec3;
+       uniform   mvp      : mat4;
+       varying   v_color  : vec3;
+       void {
+         v_color = color;
+         gl_Position = mvp * vec4(position, 1.0);
+       } |}]
+
+let fragment_shader =
+  [%shader.fragment
+    {| varying v_color    : vec3;
+       output  frag_color : vec4;
+       void {
+         frag_color = vec4(v_color, 1.0);
+       } |}]
+
+let glsl =
+  match Compile.pair ~backend:GLSL vertex_shader fragment_shader with
+  | Ok program -> program
+  | Error err -> failwith (string_of_error err)
+
+let vertex_src = glsl.vertex
+let fragment_src = glsl.fragment
+
+(* let vertex_shader =
   let vb = Vertex.create () in
   let vb, position = Vertex.attribute "position" Ty.vec3 vb in
   let vb, color = Vertex.attribute "color" Ty.vec3 vb in
@@ -44,6 +54,18 @@ let vertex_shader =
            (E.vec4_of_vec3 (S.read position) (E.float 1.0)))
     ])
 ;;
+(* let vertex_src =
+  {| #version 330 core
+    layout(location = 0) in vec3 position;
+    layout(location = 1) in vec3 color;
+    uniform mat4 mvp;
+    out vec3 v_color;
+    void main() {
+      v_color = color;
+      gl_Position = mvp * vec4(position, 1.0);
+    } |}
+;;
+*)
 
 let fragment_shader =
   let fb = Fragment.create () in
@@ -54,16 +76,7 @@ let fragment_shader =
         frag_color
         (E.vec4_of_vec3 (S.read v_color) (E.float 1.0))
     ]
-;;
-
-let vertex_src, fragment_src =
-  match Compile.pair ~backend:GLSL vertex_shader fragment_shader with
-  | Ok program -> program.vertex, program.fragment
-  | Error err -> failwith (string_of_error err)
-;;
-
-(* ---------- The shaders, as strings (the part we want to replace) ---------- *)
-
+;; *)
 (*
 let fragment_src =
   {|#version 330 core
@@ -74,6 +87,15 @@ void main() {
 }
 |}
 ;; *)
+
+(* let vertex_src, fragment_src =
+  match Compile.pair ~backend:GLSL vertex_shader fragment_shader with
+  | Ok program -> program.vertex, program.fragment
+  | Error err -> failwith (string_of_error err)
+;; *)
+
+(* ---------- The shaders, as strings (the part we want to replace) ---------- *)
+
 
 (* ---------- Small helpers ---------- *)
 
