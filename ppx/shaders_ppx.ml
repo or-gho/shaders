@@ -396,17 +396,20 @@ let result_ty_of_fn = function
   | _ -> raise (Invalid_argument "unknown façade function")
 ;;
 
-let rec type_expr tbl (e : expr) : typed =
+let rec type_expr ?(handles = Hashtbl.create 0) ?(position_handle = "gl_position") tbl (e : expr) : typed =
   match e with
   | EFloat f -> Float, e_apply (e_fun "E.float") [ e_float f ]
   | EInt i -> Int, e_apply (e_fun "E.int") [ e_int i ]
   | EBool b -> Bool, e_apply (e_fun "E.bool") [ e_bool b ]
   | EVar name ->
     (match Hashtbl.find_opt tbl name with
-     | Some { b_ty; _ } -> b_ty, e_var Location.none b_ty name
+     | Some { b_ty; _ } ->
+       let handle = if name = "gl_Position" then position_handle
+         else Option.value (Hashtbl.find_opt handles name) ~default:name in
+       b_ty, e_var Location.none b_ty handle
      | None -> raise (Invalid_argument ("shader: unbound identifier " ^ name)))
   | ECall (name, args) ->
-    let typed_args = List.map (type_expr tbl) args in
+    let typed_args = List.map (type_expr ~handles ~position_handle tbl) args in
     let arg_tys = List.map fst typed_args in
     let arg_exprs = List.map snd typed_args in
     (match fn_for_call Location.none name arg_tys with
@@ -416,8 +419,8 @@ let rec type_expr tbl (e : expr) : typed =
                 (Printf.sprintf "shader: unsupported call %s/%d" name
                    (List.length arg_tys))))
   | EBinop (op, a, b) ->
-    let ta, ea = type_expr tbl a in
-    let tb, eb = type_expr tbl b in
+    let ta, ea = type_expr ~handles ~position_handle tbl a in
+    let tb, eb = type_expr ~handles ~position_handle tbl b in
     let args = [ ea; eb ] in
     (match op, ta, tb with
      | "*", Mat4, Vec4 -> Vec4, e_apply (e_fun "E.mat4_mul_vec4") args
@@ -448,7 +451,15 @@ let stage_qualify kind s =
   | `Fragment -> "Fragment." ^ s
 ;;
 
-let emit_decls loc kind decls body_emit =
+let emit_decls loc kind decls handles initial_acc body_emit =
+  let used = Hashtbl.create 16 in
+  List.iter (fun d -> Hashtbl.replace used d.d_name ()) decls;
+  Hashtbl.replace used initial_acc ();
+  let fresh () =
+    let rec loop n = let x = "__shader_builder_" ^ string_of_int n in
+      if Hashtbl.mem used x then loop (n + 1) else (Hashtbl.add used x (); x)
+    in loop 0
+  in
   let rec build acc = function
     | [] -> body_emit acc
     | d :: rest ->
@@ -463,29 +474,35 @@ let emit_decls loc kind decls body_emit =
       let ty_e = e_fun (types_path d.d_ty) in
       let call = e_apply (e_fun fn)
           [ name_e; ty_e; Ast_builder.Default.evar ~loc acc ] in
-      let new_acc = "__b" ^ string_of_int (List.length rest) in
+      let new_acc = fresh () in
       let pat =
         Ast_builder.Default.ppat_tuple ~loc
           [ Ast_builder.Default.pvar ~loc new_acc
-          ; Ast_builder.Default.pvar ~loc d.d_name ]
+          ; Ast_builder.Default.pvar ~loc (Hashtbl.find handles d.d_name) ]
       in
       Ast_builder.Default.pexp_let ~loc Asttypes.Nonrecursive
         [ Ast_builder.Default.value_binding ~loc ~pat ~expr:call ]
         (build new_acc rest)
   in
-  build "__b0" decls
+  build initial_acc decls
 ;;
 
-let emit_assign loc tbl (SAssign (lhs_name, rhs)) =
+let emit_assign loc kind tbl handles position_handle (SAssign (lhs_name, rhs)) =
   match Hashtbl.find_opt tbl lhs_name with
   | None -> raise_err loc "shader: assignment to undeclared %S" lhs_name
-  | Some { b_ty; _ } ->
-    let _, rhs_e = type_expr tbl rhs in
+  | Some { b_ty; b_kind } ->
+    (match b_kind, kind with
+     | DUniform, _ -> raise_err loc "shader: cannot assign to uniform %S" lhs_name
+     | DAttribute, _ -> raise_err loc "shader: cannot assign to attribute %S" lhs_name
+     | DVarying, `Fragment -> raise_err loc "shader: cannot assign to fragment varying %S" lhs_name
+     | DVarying, `Vertex -> ()
+     | DOutput, _ -> ());
+    let _, rhs_e = type_expr ~handles ~position_handle tbl rhs in
     let lhs =
       if lhs_name = "gl_Position" then
-        Ast_builder.Default.evar ~loc "gl_position"
+        Ast_builder.Default.evar ~loc position_handle
       else
-        Ast_builder.Default.evar ~loc lhs_name
+        Ast_builder.Default.evar ~loc (Hashtbl.find handles lhs_name)
     in
     e_apply (e_fun "S.assign") [ lhs; rhs_e ]
 ;;
@@ -493,7 +510,11 @@ let emit_assign loc tbl (SAssign (lhs_name, rhs)) =
 let emit_payload (p : payload) =
   let loc = p.s_loc in
   let tbl = build_table p in
-  let body_exprs = List.map (emit_assign loc tbl) p.s_body in
+  let handles = Hashtbl.create 16 in
+  List.iteri (fun i d -> Hashtbl.add handles d.d_name ("__shader_value_" ^ string_of_int i)) p.s_decls;
+  let position_handle = "__shader_position" in
+  let initial_acc = "__shader_builder_start" in
+  let body_exprs = List.map (emit_assign loc p.s_kind tbl handles position_handle) p.s_body in
   let body = Ast_builder.Default.elist ~loc body_exprs in
   let finalize acc =
     match p.s_kind with
@@ -503,7 +524,7 @@ let emit_payload (p : payload) =
     | `Vertex ->
       let lam =
         Ast_builder.Default.pexp_fun ~loc Nolabel None
-          (Ast_builder.Default.pvar ~loc "gl_position") body
+          (Ast_builder.Default.pvar ~loc position_handle) body
       in
       e_apply (e_fun "Vertex.body")
         [ Ast_builder.Default.evar ~loc acc; lam ]
@@ -517,9 +538,9 @@ let emit_payload (p : payload) =
   in
   Ast_builder.Default.pexp_let ~loc Asttypes.Nonrecursive
     [ Ast_builder.Default.value_binding ~loc
-        ~pat:(Ast_builder.Default.pvar ~loc "__b0")
+        ~pat:(Ast_builder.Default.pvar ~loc initial_acc)
         ~expr:create ]
-    (emit_decls loc p.s_kind p.s_decls finalize)
+    (emit_decls loc p.s_kind p.s_decls handles initial_acc finalize)
 ;;
 
 (* ------------------------------------------------------------------ *)

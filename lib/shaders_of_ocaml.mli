@@ -8,6 +8,12 @@
   type ivec2
   type ivec3
   type ivec4
+  type uvec2
+  type uvec3
+  type uvec4
+  type bvec2
+  type bvec3
+  type bvec4
   type mat2
   type mat3
   type mat4
@@ -70,6 +76,12 @@
     val ivec2 : ivec2 ty
     val ivec3 : ivec3 ty
     val ivec4 : ivec4 ty
+    val uvec2 : uvec2 ty
+    val uvec3 : uvec3 ty
+    val uvec4 : uvec4 ty
+    val bvec2 : bvec2 ty
+    val bvec3 : bvec3 ty
+    val bvec4 : bvec4 ty
     val mat2 : mat2 ty
     val mat3 : mat3 ty
     val mat4 : mat4 ty
