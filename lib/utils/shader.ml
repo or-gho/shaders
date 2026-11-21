@@ -42,10 +42,28 @@ let is_ident name =
      loop 1
 ;;
 
+let glsl_keywords =
+  [ "attribute"; "const"; "uniform"; "varying"; "buffer"; "shared"; "coherent"
+  ; "volatile"; "restrict"; "readonly"; "writeonly"; "atomic_uint"; "layout"
+  ; "centroid"; "flat"; "smooth"; "noperspective"; "patch"; "sample"; "break"
+  ; "continue"; "do"; "for"; "while"; "switch"; "case"; "default"; "if"
+  ; "else"; "subroutine"; "in"; "out"; "inout"; "float"; "double"; "int"
+  ; "void"; "bool"; "true"; "false"; "invariant"; "precise"; "discard"; "return"
+  ; "mat2"; "mat3"; "mat4"; "vec2"; "vec3"; "vec4"; "ivec2"; "ivec3"; "ivec4"
+  ; "bvec2"; "bvec3"; "bvec4"; "uint"; "uvec2"; "uvec3"; "uvec4"; "sampler2D"
+  ; "samplerCube" ]
+;;
+
 let check_name kind name (b : (_, _, _, _) builder) =
   if not (is_ident name)
   then invalid_arg (Printf.sprintf "Shader: %S is not a valid identifier" name);
   if String.starts_with ~prefix:"gl_" name
+  then invalid_arg (Printf.sprintf "Shader: %S is reserved" name);
+  if List.mem name glsl_keywords
+  then invalid_arg (Printf.sprintf "Shader: %S is reserved" name);
+  if String.length name >= 2 && String.sub name 0 2 = "_l"
+     && let rec digits i = i = String.length name || (name.[i] >= '0' && name.[i] <= '9' && digits (i + 1)) in
+        digits 2
   then invalid_arg (Printf.sprintf "Shader: %S is reserved" name);
   let existing = b.b_attrs @ b.b_unifs @ b.b_varys @ b.b_outs in
   if List.exists (fun (_, n) -> n = name) existing

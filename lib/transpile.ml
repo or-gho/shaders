@@ -49,17 +49,17 @@ module Glsl = struct
     | Expr.UInt_const i -> string_of_int i ^ "u"
     | Expr.Bool_const b -> if b then "true" else "false"
     | Expr.Var (_, name) -> name
-    | Expr.Fadd (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go p_add b)
+    | Expr.Fadd (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go (p_add + 1) b)
     | Expr.Fsub (a, b) ->
       paren ~prec:p_add ~min_prec (go p_add a ^ " - " ^ go (p_add + 1) b)
-    | Expr.Fmul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go p_mul b)
+    | Expr.Fmul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go (p_mul + 1) b)
     | Expr.Fdiv (a, b) ->
       paren ~prec:p_mul ~min_prec (go p_mul a ^ " / " ^ go (p_mul + 1) b)
     | Expr.Fneg a -> paren ~prec:p_unary ~min_prec ("-" ^ go (p_unary + 1) a)
     | Expr.Iadd (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go p_add b)
     | Expr.Isub (a, b) ->
       paren ~prec:p_add ~min_prec (go p_add a ^ " - " ^ go (p_add + 1) b)
-    | Expr.Imul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go p_mul b)
+    | Expr.Imul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go (p_mul + 1) b)
     | Expr.Idiv (a, b) ->
       paren ~prec:p_mul ~min_prec (go p_mul a ^ " / " ^ go (p_mul + 1) b)
     | Expr.Ineg a -> paren ~prec:p_unary ~min_prec ("-" ^ go (p_unary + 1) a)
@@ -112,21 +112,21 @@ module Glsl = struct
     | Expr.Vec4_of_v3_f (v, f) -> "vec4(" ^ go p_low v ^ ", " ^ go p_low f ^ ")"
     | Expr.Vec4_of_v2_ff (v, f, g) ->
       "vec4(" ^ go p_low v ^ ", " ^ go p_low f ^ ", " ^ go p_low g ^ ")"
-    | Expr.V2add (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go p_add b)
+    | Expr.V2add (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go (p_add + 1) b)
     | Expr.V2sub (a, b) ->
       paren ~prec:p_add ~min_prec (go p_add a ^ " - " ^ go (p_add + 1) b)
-    | Expr.V2mul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go p_mul b)
-    | Expr.V2scale (s, v) -> paren ~prec:p_mul ~min_prec (go p_mul s ^ " * " ^ go p_mul v)
-    | Expr.V3add (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go p_add b)
+    | Expr.V2mul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go (p_mul + 1) b)
+    | Expr.V2scale (s, v) -> paren ~prec:p_mul ~min_prec (go p_mul s ^ " * " ^ go (p_mul + 1) v)
+    | Expr.V3add (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go (p_add + 1) b)
     | Expr.V3sub (a, b) ->
       paren ~prec:p_add ~min_prec (go p_add a ^ " - " ^ go (p_add + 1) b)
-    | Expr.V3mul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go p_mul b)
-    | Expr.V3scale (s, v) -> paren ~prec:p_mul ~min_prec (go p_mul s ^ " * " ^ go p_mul v)
-    | Expr.V4add (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go p_add b)
+    | Expr.V3mul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go (p_mul + 1) b)
+    | Expr.V3scale (s, v) -> paren ~prec:p_mul ~min_prec (go p_mul s ^ " * " ^ go (p_mul + 1) v)
+    | Expr.V4add (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go (p_add + 1) b)
     | Expr.V4sub (a, b) ->
       paren ~prec:p_add ~min_prec (go p_add a ^ " - " ^ go (p_add + 1) b)
-    | Expr.V4mul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go p_mul b)
-    | Expr.V4scale (s, v) -> paren ~prec:p_mul ~min_prec (go p_mul s ^ " * " ^ go p_mul v)
+    | Expr.V4mul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go (p_mul + 1) b)
+    | Expr.V4scale (s, v) -> paren ~prec:p_mul ~min_prec (go p_mul s ^ " * " ^ go (p_mul + 1) v)
     | Expr.V2x v -> go p_post v ^ ".x"
     | Expr.V2y v -> go p_post v ^ ".y"
     | Expr.V3x v -> go p_post v ^ ".x"
@@ -285,9 +285,11 @@ module Glsl = struct
     let b = Buffer.create 4096 in
     let addf fmt = Printf.ksprintf (Buffer.add_string b) fmt in
     addf "#version 330 core\n\n";
-    List.iteri
-      (fun i (Any typ, name) ->
-         addf "layout(location = %d) in %s %s;\n" i (Types.glsl_name typ) name)
+    let location = ref 0 in
+    List.iter
+      (fun (Any typ, name) ->
+         addf "layout(location = %d) in %s %s;\n" !location (Types.glsl_name typ) name;
+         location := !location + (match typ with Types.Mat2 -> 2 | Types.Mat3 -> 3 | Types.Mat4 -> 4 | _ -> 1))
       sh.attrs;
     List.iter
       (fun (Any typ, name) -> addf "uniform %s %s;\n" (Types.glsl_name typ) name)
@@ -582,17 +584,17 @@ module Wgsl = struct
     | Expr.UInt_const i -> string_of_int i ^ "u"
     | Expr.Bool_const b -> if b then "true" else "false"
     | Expr.Var (_, name) -> ref_of scope name
-    | Expr.Fadd (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go p_add b)
+    | Expr.Fadd (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go (p_add + 1) b)
     | Expr.Fsub (a, b) ->
       paren ~prec:p_add ~min_prec (go p_add a ^ " - " ^ go (p_add + 1) b)
-    | Expr.Fmul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go p_mul b)
+    | Expr.Fmul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go (p_mul + 1) b)
     | Expr.Fdiv (a, b) ->
       paren ~prec:p_mul ~min_prec (go p_mul a ^ " / " ^ go (p_mul + 1) b)
     | Expr.Fneg a -> paren ~prec:p_unary ~min_prec ("-" ^ go (p_unary + 1) a)
     | Expr.Iadd (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go p_add b)
     | Expr.Isub (a, b) ->
       paren ~prec:p_add ~min_prec (go p_add a ^ " - " ^ go (p_add + 1) b)
-    | Expr.Imul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go p_mul b)
+    | Expr.Imul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go (p_mul + 1) b)
     | Expr.Idiv (a, b) ->
       paren ~prec:p_mul ~min_prec (go p_mul a ^ " / " ^ go (p_mul + 1) b)
     | Expr.Ineg a -> paren ~prec:p_unary ~min_prec ("-" ^ go (p_unary + 1) a)
@@ -638,21 +640,21 @@ module Wgsl = struct
     | Expr.Vec4_of_v3_f (v, f) -> "vec4<f32>(" ^ go0 v ^ ", " ^ go0 f ^ ")"
     | Expr.Vec4_of_v2_ff (v, f, g) ->
       "vec4<f32>(" ^ go0 v ^ ", " ^ go0 f ^ ", " ^ go0 g ^ ")"
-    | Expr.V2add (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go p_add b)
+    | Expr.V2add (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go (p_add + 1) b)
     | Expr.V2sub (a, b) ->
       paren ~prec:p_add ~min_prec (go p_add a ^ " - " ^ go (p_add + 1) b)
-    | Expr.V2mul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go p_mul b)
-    | Expr.V2scale (s, v) -> paren ~prec:p_mul ~min_prec (go p_mul s ^ " * " ^ go p_mul v)
-    | Expr.V3add (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go p_add b)
+    | Expr.V2mul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go (p_mul + 1) b)
+    | Expr.V2scale (s, v) -> paren ~prec:p_mul ~min_prec (go p_mul s ^ " * " ^ go (p_mul + 1) v)
+    | Expr.V3add (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go (p_add + 1) b)
     | Expr.V3sub (a, b) ->
       paren ~prec:p_add ~min_prec (go p_add a ^ " - " ^ go (p_add + 1) b)
-    | Expr.V3mul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go p_mul b)
-    | Expr.V3scale (s, v) -> paren ~prec:p_mul ~min_prec (go p_mul s ^ " * " ^ go p_mul v)
-    | Expr.V4add (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go p_add b)
+    | Expr.V3mul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go (p_mul + 1) b)
+    | Expr.V3scale (s, v) -> paren ~prec:p_mul ~min_prec (go p_mul s ^ " * " ^ go (p_mul + 1) v)
+    | Expr.V4add (a, b) -> paren ~prec:p_add ~min_prec (go p_add a ^ " + " ^ go (p_add + 1) b)
     | Expr.V4sub (a, b) ->
       paren ~prec:p_add ~min_prec (go p_add a ^ " - " ^ go (p_add + 1) b)
-    | Expr.V4mul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go p_mul b)
-    | Expr.V4scale (s, v) -> paren ~prec:p_mul ~min_prec (go p_mul s ^ " * " ^ go p_mul v)
+    | Expr.V4mul (a, b) -> paren ~prec:p_mul ~min_prec (go p_mul a ^ " * " ^ go (p_mul + 1) b)
+    | Expr.V4scale (s, v) -> paren ~prec:p_mul ~min_prec (go p_mul s ^ " * " ^ go (p_mul + 1) v)
     | Expr.V2x v -> go p_post v ^ ".x"
     | Expr.V2y v -> go p_post v ^ ".y"
     | Expr.V3x v -> go p_post v ^ ".x"
@@ -762,7 +764,7 @@ module Wgsl = struct
       p1 ^ "let " ^ name ^ ": " ^ Types.wgsl_name typ ^ " = " ^ expr scope e ^ ";\n"
     | Stmt.Decl_var (typ, name, e) ->
       p1 ^ "var " ^ name ^ ": " ^ Types.wgsl_name typ ^ " = " ^ expr scope e ^ ";\n"
-    | Stmt.Expr_stmt e -> p1 ^ expr scope e ^ ";\n"
+    | Stmt.Expr_stmt e -> p1 ^ "_ = " ^ expr scope e ^ ";\n"
     | Stmt.If (c, thn, els) ->
       if els = []
       then p1 ^ "if " ^ expr scope c ^ " {\n" ^ seq (indent + 2) thn ^ p1 ^ "}\n"
@@ -867,7 +869,8 @@ module Wgsl = struct
       Buffer.add_string b "struct Uniforms {\n";
       List.iter
         (fun (Any typ, n) ->
-           Buffer.add_string b (Printf.sprintf "  %s: %s,\n" n (Types.wgsl_name typ)))
+           let member_type = match typ with Types.Bool -> "u32" | _ -> Types.wgsl_name typ in
+           Buffer.add_string b (Printf.sprintf "  %s: %s,\n" n member_type))
         data_unifs;
       Buffer.add_string b "}\n\n";
       Buffer.add_string
@@ -966,6 +969,23 @@ let check_interface
   =
   let v_varys = filter_varys v.varys in
   let f_varys = filter_varys f.varys in
+  let rec check_uniforms = function
+    | [] -> Ok ()
+    | (vt, vn) :: rest ->
+      (match List.find_opt (fun (_, fn) -> fn = vn) f.unifs with
+       | None -> check_uniforms rest
+       | Some (ft, _) when Shader.equal_any_typ vt ft -> check_uniforms rest
+       | Some (ft, _) ->
+         Error
+           (Printf.sprintf
+              "uniform %S type mismatch: vertex declares %s, fragment declares %s"
+              vn
+              (Shader.string_of_any_typ vt)
+              (Shader.string_of_any_typ ft)))
+  in
+  match check_uniforms v.unifs with
+  | Error _ as err -> err
+  | Ok () ->
   let rec go i vs fs =
     match vs, fs with
     | [], [] -> Ok ()
