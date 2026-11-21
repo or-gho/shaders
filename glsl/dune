@@ -1,5 +1,0 @@
- (library
-  (name shaders_of_ocaml_glsl)
-  (public_name shaders.glsl)
-  (libraries shaders_of_ocaml)
-  (modules transpile))

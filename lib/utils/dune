@@ -1,0 +1,4 @@
+(library
+ (name shaders_utils)
+ (public_name shaders_of_ocaml.utils)
+ (modules types expr stmt shader))

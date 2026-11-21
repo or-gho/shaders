@@ -1,4 +1,5 @@
 (library
- (name shaders_of_ocaml)
- (public_name shaders.core)
- (modules types expr stmt shader dsl))
+  (name shaders_of_ocaml)
+  (public_name shaders_of_ocaml.core)
+  (modules shaders_of_ocaml transpile)
+  (libraries shaders_utils))

@@ -12,44 +12,6 @@ open Tgl3
 (* Bring the eDSL into scope. *)
 open Shaders_of_ocaml
 
-let vertex_shader =
-  let open Dsl in
-  let open Shader in
-  let open Types in
-  let position = attribute Vec3 "position" in
-  let color = attribute Vec3 "color" in
-  let mvp = uniform Mat4 "mvp" in
-  let v_color = Types.Vec3, "v_color" in
-  { vs_attributes = [ Vec3, "position"; Vec3, "color" ]
-  ; vs_uniforms = [ Mat4, "mvp" ]
-  ; vs_varyings = [ v_color ]
-  ; vs_body =
-      [ assign v_color color
-      ; assign (Vec4, "gl_Position") (mat4_mul_vec4 mvp (vec4_of_vec3 position (f 1.0)))
-      ]
-  }
-;;
-
-let fragment_shader =
-  let open Dsl in
-  let open Shader in
-  let open Types in
-  let v_color = Vec3, "v_color" in
-  let v_color_in = attribute Vec3 "v_color" in
-  { fs_uniforms = []
-  ; fs_varyings = [ v_color ]
-  ; fs_output = Vec4, "frag_color"
-  ; fs_body = [ assign (Vec4, "frag_color") (vec4_of_vec3 v_color_in (f 1.0)) ]
-  }
-;;
-
-(* Transpile to GLSL strings. The [compile_pair] call enforces that the
-   vertex shader's varyings match the fragment shader's varyings. *)
-let vertex_src, fragment_src =
-  Shaders_of_ocaml_glsl.Transpile.compile_pair vertex_shader fragment_shader
-;;
-
-(* ---------- The shaders, as strings (the part we want to replace) ---------- *)
 
 (* let vertex_src =
   {| #version 330 core
@@ -62,7 +24,47 @@ let vertex_src, fragment_src =
       gl_Position = mvp * vec4(position, 1.0);
     } |}
 ;;
+*)
 
+
+
+(* New typed shader implementation *)
+let vertex_shader =
+  let vb = Vertex.create () in
+  let vb, position = Vertex.attribute "position" Ty.vec3 vb in
+  let vb, color = Vertex.attribute "color" Ty.vec3 vb in
+  let vb, mvp = Vertex.uniform "mvp" Ty.mat4 vb in
+  let vb, v_color = Vertex.varying "v_color" Ty.vec3 vb in
+  Vertex.body vb (fun gl_position ->
+    [ S.assign v_color (S.read color)
+    ; S.assign
+        gl_position
+        (E.mat4_mul_vec4
+           (S.read mvp)
+           (E.vec4_of_vec3 (S.read position) (E.float 1.0)))
+    ])
+;;
+
+let fragment_shader =
+  let fb = Fragment.create () in
+  let fb, v_color = Fragment.varying "v_color" Ty.vec3 fb in
+  let fb, frag_color = Fragment.output "frag_color" Ty.vec4 fb in
+  Fragment.body fb
+    [ S.assign
+        frag_color
+        (E.vec4_of_vec3 (S.read v_color) (E.float 1.0))
+    ]
+;;
+
+let vertex_src, fragment_src =
+  match Compile.pair ~backend:GLSL vertex_shader fragment_shader with
+  | Ok program -> program.vertex, program.fragment
+  | Error err -> failwith (string_of_error err)
+;;
+
+(* ---------- The shaders, as strings (the part we want to replace) ---------- *)
+
+(*
 let fragment_src =
   {|#version 330 core
 in vec3 v_color;
@@ -133,7 +135,7 @@ type shape =
   | Rectangle
   | Cube
 
-let selected_shape = Cube
+let selected_shape = Triangle
 
 type vertex =
   { x : float

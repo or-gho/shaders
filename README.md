@@ -76,7 +76,7 @@ shaders/
 (lang dune 3.24)
 
 (package
- (name shaders))
+ (name shaders_of_ocaml))
 ```
 
 The `package` stanza is needed because `bin/dune` uses `public_name`.
@@ -87,7 +87,7 @@ If your dune is older than 3.0, change the version to match `dune --version`.
 ```
 (executable
  (name main)
- (public_name shaders)
+ (public_name shaders_of_ocaml)
  (libraries tsdl tgls.tgl3)
  (link_flags (-cclib -Wl,--no-as-needed -cclib -lGL)))
 ```
@@ -97,7 +97,7 @@ What each line does:
 | Line | Meaning |
 |---|---|
 | `(name main)` | builds `bin/main.ml` into `main.exe` |
-| `(public_name shaders)` | lets you run it as `dune exec shaders` |
+| `(public_name shaders_of_ocaml)` | lets you run it as `dune exec shaders_of_ocaml` |
 | `(libraries tsdl tgls.tgl3)` | links SDL2 and the OpenGL 3.x bindings |
 | `(link_flags ...)` | links the system OpenGL library into the executable |
 
@@ -128,12 +128,12 @@ ignore (Sdl.gl_set_swap_interval 1);
 ```sh
 cd shaders
 dune build
-dune exec shaders
+dune exec shaders_of_ocaml
 ```
 
 Press Esc or close the window to quit.
 
-To see the exit code in fish: `dune exec shaders; echo "exit code: $status"`
+To see the exit code in fish: `dune exec shaders_of_ocaml; echo "exit code: $status"`
 (in bash/zsh it is `$?`).
 
 ## 6. Troubleshooting
@@ -158,9 +158,9 @@ glxinfo -B | grep -i version
 for testing (fish 3.1+ syntax; older fish: prefix with `env`):
 
 ```sh
-LIBGL_ALWAYS_SOFTWARE=1 dune exec shaders
-MESA_GL_VERSION_OVERRIDE=3.3 MESA_GLSL_VERSION_OVERRIDE=330 dune exec shaders
-SDL_VIDEODRIVER=x11 dune exec shaders
+LIBGL_ALWAYS_SOFTWARE=1 dune exec shaders_of_ocaml
+MESA_GL_VERSION_OVERRIDE=3.3 MESA_GLSL_VERSION_OVERRIDE=330 dune exec shaders_of_ocaml
+SDL_VIDEODRIVER=x11 dune exec shaders_of_ocaml
 ```
 
 ## 7. Other notes
