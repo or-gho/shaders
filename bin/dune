@@ -1,6 +1,7 @@
 (executable
  (public_name shaders_of_ocaml)
  (name main)
- (libraries tsdl tgls.tgl3 shaders_of_ocaml )
+ (libraries tsdl tgls.tgl3 shaders_of_ocaml)
+ (modules main rubik_state rubik_render)
  (preprocess (pps shaders_of_ocaml.ppx))
  (link_flags (-cclib -Wl,--no-as-needed -cclib -lGL)))

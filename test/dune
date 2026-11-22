@@ -1,4 +1,4 @@
 (test
  (name test_shaders)
- (libraries shaders_of_ocaml)
+ (libraries shaders_of_ocaml alcotest)
  (preprocess (pps shaders_of_ocaml.ppx)))

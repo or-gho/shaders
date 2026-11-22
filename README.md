@@ -17,6 +17,30 @@ You can write shaders in two ways:
 Both produce the same output. A test in this repository checks that the PPX
 and the builder generate identical GLSL.
 
+## Subdirectories & System Boundaries
+
+- **[`lib`](./lib/README.md)**: Core eDSL library defining type descriptors (`Ty`), expression constructors (`E`), statement builders (`S`), stage builders (`Vertex`, `Fragment`), and compilation backends (`Compile.pair`, `Transpile.Glsl`, `Transpile.Wgsl`).
+- **[`lib/utils`](./lib/utils/README.md)**: Internal typed AST representations, GADTs, statement primitives, and stage builder state management.
+- **[`ppx`](./ppx/README.md)**: PPX rewriter providing the `[%shader.vertex]` and `[%shader.fragment]` extensions for embedding GLSL-like syntax directly in OCaml.
+- **[`bin`](./bin/README.md)**: Interactive OpenGL 3.3 executable application demonstrating end-to-end rendering using SDL2 (`tsdl`) and OpenGL (`tgls`).
+
+## Global Invariants
+
+- **Static Type Safety**: Expressions and statements are indexed by phantom type tags (`float_s`, `vec3`, `mat4`, etc.) statically checked by the OCaml compiler.
+- **Stage Interface Consistency**: `Compile.pair` verifies that all varyings emitted by the vertex stage are matched in name and type by the fragment stage, and that uniform types agree across stages.
+- **Identifier Safety**: All variable, attribute, uniform, varying, and output identifiers must satisfy identifier syntax and must not collide with GLSL reserved keywords.
+
+## Global Side Effects
+
+- The core library (`lib`) and PPX (`ppx`) perform purely functional, in-memory transformations with zero runtime side effects.
+- The example application (`bin`) opens an OS window via SDL2, initializes an OpenGL context, allocates GPU resources, and processes window events.
+
+## System Verification
+
+- Run: `dune runtest`
+
+---
+
 ## Example
 
 ```ocaml
@@ -158,8 +182,6 @@ To use the PPX in your own project, add it to the `preprocess` field:
  (preprocess (pps shaders_of_ocaml.ppx)))
 ```
 
-<!-- Check: confirm the PPX library name in src/ppx/dune -->
-
 ## Optional: validating WGSL
 
 The test suite runs `naga` on the generated WGSL when it is installed. Install
@@ -181,11 +203,9 @@ Then build and run as usual.
 
 ```
 dune-project
-src/          the eDSL and the GLSL / WGSL backends
+lib/          the eDSL and the GLSL / WGSL backends
+lib/utils/    internal typed AST, GADTs, and builders
 ppx/          the [%shader.vertex] and [%shader.fragment] PPX
 bin/          example program (OpenGL 3.3 triangle)
 test/         tests (builder vs PPX output, interface check, WGSL validation)
-flake.nix
 ```
-
-<!-- Check: adjust the directory names above to match your repository -->
